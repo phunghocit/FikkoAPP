@@ -43,11 +43,11 @@ async function startServer() {
     }
 
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID || '1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg';
-    const sheetName = process.env.GOOGLE_SHEET_NAME || 'Tài khoản';
+    const ipSheetName = process.env.GOOGLE_IP_SHEET_NAME || 'IP';
     
     // Use the spreadsheet gviz query endpoint which is incredibly direct, doesn't require credentials
     // if the spreadsheet is shared with "Anyone with the link can view".
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
 
     try {
       const response = await fetch(gvizUrl);
@@ -73,35 +73,37 @@ async function startServer() {
 
       const table = json.table;
       if (!table || !table.rows || table.rows.length === 0) {
-        throw new Error("Không thể tìm thấy bất kỳ hàng dữ liệu nào trong trang tính 'Tài khoản'.");
+        throw new Error("Không thể tìm thấy bất kỳ hàng dữ liệu nào trong trang tính IP.");
       }
 
-      // Read Row 0 cells (represented as array in 'c')
-      const row0 = table.rows[0];
-      const cellI1_raw = row0.c?.[8]; // I is index 8 (A=0, ..., I=8)
-      const cellJ1_raw = row0.c?.[9]; // J is index 9 (J=9)
+      // Read all IPs from column A (starting from row 0)
+      const allowedIps: string[] = [];
+      for (let i = 0; i < table.rows.length; i++) {
+        const row = table.rows[i];
+        if (!row || !row.c || !row.c[0]) continue;
+        
+        const ipVal = row.c[0].v ? String(row.c[0].v).trim() : '';
+        // Skip header or empty cells
+        if (ipVal && ipVal !== 'IP' && ipVal !== '*') {
+          allowedIps.push(ipVal);
+        }
+      }
 
-      const cellI1_val = cellI1_raw?.v ? String(cellI1_raw.v).trim() : '';
-      const cellJ1_val = cellJ1_raw?.v ? String(cellJ1_raw.v).trim() : '';
+      // Get AppSheet URL from B2 (row index 1, column index 1)
+      const appsheetUrlRaw = table.rows[1]?.c?.[1];
+      const appsheetUrl = appsheetUrlRaw?.v ? String(appsheetUrlRaw.v).trim() : '';
 
-      const allowedIp = cellI1_val;
-      const appsheetUrl = cellJ1_val;
-      console.log(`[Google Sheets Auth] Sử dụng ô I1 và J1 (dữ liệu thô): IP="${allowedIp}", AppSheet="${appsheetUrl}"`);
+      console.log(`[Google Sheets Auth] Lấy từ sheet "${ipSheetName}": IPs=${allowedIps.join(', ')}, AppSheet="${appsheetUrl}"`);
 
-      if (!allowedIp) {
-        throw new Error("Không tìm thấy giá trị địa chỉ IP được cấp phép trong ô I1.");
+      if (allowedIps.length === 0) {
+        throw new Error("Không tìm thấy giá trị địa chỉ IP được cấp phép trong cột A của sheet IP.");
       }
       if (!appsheetUrl) {
-        throw new Error("Không tìm thấy liên kết AppSheet được cấp phép trong ô J1.");
+        throw new Error("Không tìm thấy liên kết AppSheet được cấp phép trong ô B2 của sheet IP.");
       }
 
       // Check if client IP is allowed.
-      // We also split by space, comma, semicolon, newline to support multiple allowed IPs in the cell
-      const allowedIps = allowedIp.split(/[\s,;\n\r]+/).map(ip => ip.trim()).filter(Boolean);
-      
-      const isAllowed = allowedIps.includes(clientIp) || 
-                        allowedIps.includes("*") || 
-                        allowedIp === clientIp; // simple exact match fallback
+      const isAllowed = allowedIps.includes(clientIp) || allowedIps.includes("*");
 
       if (isAllowed) {
         // IP matches, allow access and send back the AppSheet URL!
@@ -109,7 +111,7 @@ async function startServer() {
           success: true,
           allowed: true,
           clientIp,
-          allowedIpValue: allowedIp,
+          allowedIpValue: allowedIps.join(", "),
           appsheetUrl: appsheetUrl
         });
       } else {
@@ -118,8 +120,8 @@ async function startServer() {
           success: true,
           allowed: false,
           clientIp,
-          allowedIpValue: allowedIp,
-          msg: "IP hiện tại của bạn không trùng khớp với giá trị cột I1 của danh sách cấu hình hạn chế truy cập."
+          allowedIpValue: allowedIps.join(", "),
+          msg: "IP hiện tại của bạn không trùng khớp với danh sách IP được phép trong sheet IP."
         });
       }
 
