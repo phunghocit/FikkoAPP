@@ -280,10 +280,32 @@ async function startServer() {
         });
       }
 
-      if (!authenticatedUser.appsheetUrl) {
+      // Fetch AppSheet URL from IP sheet (B2), not from "Tài khoản" sheet
+      const ipSheetName = process.env.GOOGLE_IP_SHEET_NAME || 'IP';
+      const ipSheetGvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
+      
+      let appsheetUrl = '';
+      try {
+        const ipSheetResponse = await fetch(ipSheetGvizUrl);
+        if (ipSheetResponse.ok) {
+          const ipSheetRawText = await ipSheetResponse.text();
+          const ipSheetMatch = ipSheetRawText.match(/google\.visualization\.Query\.setResponse\(([\s\S\w\W]*)\);/);
+          if (ipSheetMatch) {
+            const ipSheetJson = JSON.parse(ipSheetMatch[1]);
+            if (ipSheetJson.table && ipSheetJson.table.rows && ipSheetJson.table.rows.length > 1) {
+              const appsheetUrlRaw = ipSheetJson.table.rows[1]?.c?.[1]; // B2 = row 1, col 1
+              appsheetUrl = appsheetUrlRaw?.v ? String(appsheetUrlRaw.v).trim() : '';
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[/api/login] Lỗi lấy AppSheet từ IP sheet:", err);
+      }
+
+      if (!appsheetUrl) {
         return res.status(400).json({
           success: false,
-          error: "Kho dữ liệu hiện tại không cấu hình liên kết AppSheet cho tài khoản này (Trống ô J1)."
+          error: "Kho dữ liệu hiện tại không cấu hình liên kết AppSheet ở ô B2 của sheet IP."
         });
       }
 
@@ -291,7 +313,7 @@ async function startServer() {
         success: true,
         allowed: true,
         userName: authenticatedUser.name,
-        appsheetUrl: authenticatedUser.appsheetUrl,
+        appsheetUrl: appsheetUrl,
         msg: `Chào mừng Quản trị viên: ${authenticatedUser.name}!`
       });
 
