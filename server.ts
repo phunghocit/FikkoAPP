@@ -10,6 +10,7 @@ async function startServer() {
 
   // API Route to verify client's IP and get the AppsSheet link securely
   app.get("/api/check-ip", async (req, res) => {
+    console.log("[/api/check-ip] Nhận yêu cầu từ client");
     // 1. Get client IP (prefer client-side public WAN IP passed in query)
     const queryIp = req.query.client_ip;
     let clientIp = '';
@@ -104,6 +105,8 @@ async function startServer() {
 
       // Check if client IP is allowed.
       const isAllowed = allowedIps.includes(clientIp) || allowedIps.includes("*");
+
+      console.log(`[IP Check] clientIp="${clientIp}", allowedIps=[${allowedIps.join(', ')}], isAllowed=${isAllowed}`);
 
       if (isAllowed) {
         // IP matches, allow access and send back the AppSheet URL!
