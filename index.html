@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fikko Market</title>
     <link rel="icon" type="image/png" href="/assets/logo/fikkomarket.PNG" />
+      <script>
+      (function() {
+        try {
+          var originalFetch = window.fetch;
+          var currentFetch = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return currentFetch;
+            },
+            set: function(val) {
+              currentFetch = val;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          console.warn("Không thể thiết lập cấu hình getter/setter cho window.fetch:", e);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

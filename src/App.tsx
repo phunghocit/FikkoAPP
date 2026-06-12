@@ -21,6 +21,217 @@ interface IPCheckResponse {
   error?: string;
 }
 
+// Helper function to normalize Vietnamese characters for matching column headers and values
+const cleanString = (str: string): string => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .trim()
+    .replace(/\s+/g, ' ');
+};
+
+// Client-side fallback to read Google Sheets directly (useful for static deploys like Vercel)
+async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse> {
+  const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg";
+  const sheetName = import.meta.env.VITE_SHEET_NAME || "Tài khoản";
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+
+  try {
+    const response = await fetch(gvizUrl);
+    if (!response.ok) {
+      throw new Error(`Google Sheets trả về lỗi mạng (HTTP ${response.status})`);
+    }
+    const rawText = await response.text();
+    const match = rawText.match(/google\.visualization\.Query\.setResponse\(([\s\S\w\W]*)\);/);
+    if (!match) {
+      throw new Error("Không thể phân tách dữ liệu cấu hình từ Google Sheets. Hãy kiểm tra quyền chia sẻ 'Bất kỳ ai có liên kết đều có thể Xem'.");
+    }
+
+    const json = JSON.parse(match[1]);
+    if (json.status === "error") {
+      const errorDetail = json.errors?.[0]?.detailed_message || 'Lỗi không xác định';
+      throw new Error(`Google Sheet báo lỗi: ${errorDetail}`);
+    }
+
+    const table = json.table;
+    if (!table || !table.rows || table.rows.length === 0) {
+      throw new Error("Không có hàng dữ liệu nào được cấu hình trong bảng tính.");
+    }
+
+    const row0 = table.rows[0];
+    const cellI1_raw = row0.c?.[8]; // Col I matches index 8 (A=0, ..., I=8)
+    const cellJ1_raw = row0.c?.[9]; // Col J matches index 9 (J=9)
+
+    const cellI1_val = cellI1_raw?.v ? String(cellI1_raw.v).trim() : '';
+    const cellJ1_val = cellJ1_raw?.v ? String(cellJ1_raw.v).trim() : '';
+
+    const allowedIp = cellI1_val;
+    const appsheetUrl = cellJ1_val;
+
+    if (!allowedIp) {
+      throw new Error("Không lấy được dữ liệu địa chỉ IP an toàn ở ô I1 của Google Sheet.");
+    }
+    if (!appsheetUrl) {
+      throw new Error("Không lấy được liên kết AppSheet bọc bảo mật ở ô J1 của Google Sheet.");
+    }
+
+    const allowedIps = allowedIp.split(/[\s,;\n\r]+/).map(ip => ip.trim()).filter(Boolean);
+    const isAllowed = allowedIps.includes(clientIp) || allowedIps.includes("*") || allowedIp === clientIp;
+
+    if (isAllowed) {
+      return {
+        success: true,
+        allowed: true,
+        clientIp,
+        allowedIpValue: allowedIp,
+        appsheetUrl
+      };
+    } else {
+      return {
+        success: true,
+        allowed: false,
+        clientIp,
+        allowedIpValue: allowedIp,
+        msg: "Bạn chỉ có thể truy cập khi làm việc tại nơi làm việc"
+      };
+    }
+  } catch (err: any) {
+    console.error("[Fallback Client Check] Thất bại:", err);
+    return {
+      success: false,
+      allowed: false,
+      clientIp,
+      error: err.message || "Bị từ chối quyền truy cập trực tiếp."
+    };
+  }
+}
+
+// Client-side fallback to authenticate admin credentials directly
+async function performClientSideLogin(usernameInput: string, passwordInput: string): Promise<any> {
+  const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg";
+  const sheetName = import.meta.env.VITE_SHEET_NAME || "Tài khoản";
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+
+  try {
+    const response = await fetch(gvizUrl);
+    if (!response.ok) {
+      throw new Error(`Google Sheets trả về mã lỗi mạng (HTTP ${response.status})`);
+    }
+    const rawText = await response.text();
+    const match = rawText.match(/google\.visualization\.Query\.setResponse\(([\s\S\w\W]*)\);/);
+    if (!match) {
+      throw new Error("Không thể đọc danh sách tài khoản từ Google Sheets.");
+    }
+
+    const json = JSON.parse(match[1]);
+    if (json.status === "error") {
+      const errorDetail = json.errors?.[0]?.detailed_message || 'Lỗi không xác định';
+      throw new Error(`Google Sheet báo lỗi: ${errorDetail}`);
+    }
+
+    const table = json.table;
+    if (!table || !table.rows || table.rows.length === 0) {
+      throw new Error("Không có bất kỳ tài khoản nào được đăng ký trong bảng tính.");
+    }
+
+    // Default columns
+    const colIndices = {
+      id: 0,
+      username: 1,
+      password: 2,
+      role: 3,
+      name: 4,
+      appsheet: 9
+    };
+
+    const row0 = table.rows[0];
+    let hasHeader = false;
+
+    if (row0 && row0.c) {
+      row0.c.forEach((cell: any, idx: number) => {
+        const val = cell?.v ? cleanString(String(cell.v)) : '';
+        if (val === 'id') {
+          colIndices.id = idx;
+          hasHeader = true;
+        } else if (val === 'tai khoa' || val.includes('tai khoan') || val === 'username' || val === 'user') {
+          colIndices.username = idx;
+          hasHeader = true;
+        } else if (val.includes('mat khau') || val === 'password' || val === 'pass') {
+          colIndices.password = idx;
+          hasHeader = true;
+        } else if (val === 'role' || val.includes('vai tro') || val.includes('chuc vu') || val.includes('quyen')) {
+          colIndices.role = idx;
+          hasHeader = true;
+        } else if (val === 'ten' || val === 'name' || val.includes('ho ten')) {
+          colIndices.name = idx;
+          hasHeader = true;
+        } else if (val.includes('appsheet') || val.includes('link') || val.includes('url')) {
+          colIndices.appsheet = idx;
+        }
+      });
+    }
+
+    const startIndex = hasHeader ? 1 : 0;
+    let authenticatedUser = null;
+
+    const defaultAppsheetUrlRaw = table.rows[0]?.c?.[9];
+    const defaultAppsheetUrl = defaultAppsheetUrlRaw?.v ? String(defaultAppsheetUrlRaw.v).trim() : '';
+
+    for (let i = startIndex; i < table.rows.length; i++) {
+      const row = table.rows[i];
+      if (!row || !row.c) continue;
+
+      const uValRaw = row.c[colIndices.username];
+      const pValRaw = row.c[colIndices.password];
+      const rValRaw = row.c[colIndices.role];
+      const nValRaw = row.c[colIndices.name];
+      const appUrlRaw = row.c[colIndices.appsheet];
+
+      const uVal = uValRaw?.v ? String(uValRaw.v).trim() : '';
+      const pVal = pValRaw?.v ? String(pValRaw.v).trim() : '';
+      const rVal = rValRaw?.v ? String(rValRaw.v).trim() : '';
+      const nVal = nValRaw?.v ? String(nValRaw.v).trim() : '';
+      const appUrl = appUrlRaw?.v ? String(appUrlRaw.v).trim() : '';
+
+      if (uVal.toLowerCase() === usernameInput.toLowerCase() && pVal === passwordInput) {
+        authenticatedUser = {
+          id: row.c[colIndices.id]?.v ? String(row.c[colIndices.id].v).trim() : '',
+          username: uVal,
+          role: cleanString(rVal),
+          name: nVal || uVal,
+          appsheetUrl: appUrl || defaultAppsheetUrl
+        };
+        break;
+      }
+    }
+
+    if (!authenticatedUser) {
+      return { success: false, error: "Tài khoản hoặc mật khẩu không chính xác." };
+    }
+
+    if (authenticatedUser.role !== "admin") {
+      return { success: false, error: "Chỉ có tài khoản thuộc nhóm Quản trị viên (Admin) mới được phép truy cập." };
+    }
+
+    if (!authenticatedUser.appsheetUrl) {
+      return { success: false, error: "Kho dữ liệu Google Sheets chưa cấu hình liên kết AppSheet cho tài khoản này (Ô J1 trống)." };
+    }
+
+    return {
+      success: true,
+      allowed: true,
+      appsheetUrl: authenticatedUser.appsheetUrl,
+      msg: `Chào mừng Quản trị viên: ${authenticatedUser.name}!`
+    };
+  } catch (err: any) {
+    console.error("[Fallback Login Check] Thất bại:", err);
+    return { success: false, error: err.message || "Lỗi tự động xác thực danh tính trực tiếp." };
+  }
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<IPCheckResponse | null>(null);
@@ -49,9 +260,13 @@ export default function App() {
       try {
         const ipifyRes = await fetch("https://api.ipify.org?format=json");
         if (ipifyRes.ok) {
-          const ipifyData = await ipifyRes.json();
-          if (ipifyData && ipifyData.ip) {
-            publicIp = ipifyData.ip;
+          try {
+            const ipifyData = await ipifyRes.json();
+            if (ipifyData && ipifyData.ip) {
+              publicIp = ipifyData.ip;
+            }
+          } catch (jsonErr) {
+            console.warn("Lỗi đọc JSON từ ipify:", jsonErr);
           }
         }
       } catch (ipifyErr) {
@@ -60,11 +275,29 @@ export default function App() {
 
       // Step 2: Query security gateway with client_ip if detected
       const apiUrl = publicIp ? `/api/check-ip?client_ip=${encodeURIComponent(publicIp)}` : "/api/check-ip";
-      const res = await fetch(apiUrl);
-      if (!res.ok) {
-        throw new Error(`Cổng bảo mật phản hồi lỗi hệ thống (HTTP ${res.status})`);
+      
+      let data: IPCheckResponse;
+      try {
+        const res = await fetch(apiUrl);
+        const contentType = res.headers.get("content-type");
+        
+        if (res.ok && contentType && contentType.includes("application/json")) {
+          try {
+            data = await res.json();
+          } catch (jsonErr) {
+            console.warn("[Cổng Bảo Mật] Lỗi parse JSON kết nối IP. Thử fallback Google Sheet...", jsonErr);
+            data = await performClientSideCheck(publicIp || "0.0.0.0");
+          }
+        } else {
+          // Fallback to client-side Google Sheet parser if endpoint is unavailable/404 HTML
+          console.warn("[Cổng Bảo Mật] REST API không khả dụng. Đang chuyển đổi sang cơ cấu đọc trực tiếp từ Google Sheet...");
+          data = await performClientSideCheck(publicIp || "0.0.0.0");
+        }
+      } catch (apiErr) {
+        console.log("[Cổng Bảo Mật] Kết nối REST API thất bại. Chuyển hướng sang cơ chế xác định trực tiếp trên browser:", apiErr);
+        data = await performClientSideCheck(publicIp || "0.0.0.0");
       }
-      const data: IPCheckResponse = await res.json();
+
       setResult(data);
       
       if (!data.success && data.error) {
@@ -99,9 +332,13 @@ export default function App() {
         try {
           const ipifyRes = await fetch("https://api.ipify.org?format=json");
           if (ipifyRes.ok) {
-            const ipifyData = await ipifyRes.json();
-            if (ipifyData && ipifyData.ip) {
-              currentIp = ipifyData.ip;
+            try {
+              const ipifyData = await ipifyRes.json();
+              if (ipifyData && ipifyData.ip) {
+                currentIp = ipifyData.ip;
+              }
+            } catch (jsonErr) {
+              console.warn("Lỗi đọc JSON ipify ngầm định:", jsonErr);
             }
           }
         } catch (_) {
@@ -109,14 +346,28 @@ export default function App() {
         }
 
         const apiUrl = currentIp ? `/api/check-ip?client_ip=${encodeURIComponent(currentIp)}` : "/api/check-ip";
-        const res = await fetch(apiUrl);
-        if (res.ok) {
-          const data = await res.json();
-          // If the office IP is no longer present or valid, immediately strip access and lock the gateway
-          if (!data.allowed) {
-            console.warn("[CỔNG BẢO MẬT] Thiết bị vừa di chuyển ra ngoài phạm vi IP cho phép! Hủy quyền truy cập.");
-            setResult(data);
+        
+        let data: IPCheckResponse;
+        try {
+          const res = await fetch(apiUrl);
+          const contentType = res.headers.get("content-type");
+          if (res.ok && contentType && contentType.includes("application/json")) {
+            try {
+              data = await res.json();
+            } catch (jsonErr) {
+              data = await performClientSideCheck(currentIp || "0.0.0.0");
+            }
+          } else {
+            data = await performClientSideCheck(currentIp || "0.0.0.0");
           }
+        } catch (err) {
+          data = await performClientSideCheck(currentIp || "0.0.0.0");
+        }
+
+        // If the office IP is no longer present or valid, immediately strip access and lock the gateway
+        if (!data.allowed) {
+          console.warn("[CỔNG BẢO MẬT] Thiết bị vừa di chuyển ra ngoài phạm vi IP cho phép! Hủy quyền truy cập.");
+          setResult(data);
         }
       } catch (err) {
         console.error("Lỗi xác thực IP ngầm định:", err);
@@ -149,15 +400,34 @@ export default function App() {
     setIsLoggingIn(true);
 
     try {
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password })
-      });
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Không thể đăng nhập vào hệ thống.");
+      let data;
+      try {
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: username.trim(), password })
+        });
+        
+        const contentType = response.headers.get("content-type");
+        if (response.ok && contentType && contentType.includes("application/json")) {
+          try {
+            data = await response.json();
+          } catch (jsonErr) {
+            console.warn("[Cổng Bảo Mật] Phân tích JSON login lỗi. Chuyển trực tiếp sang Google Sheets...", jsonErr);
+            data = await performClientSideLogin(username.trim(), password);
+          }
+        } else {
+          // Direct client-side login fallback
+          console.log("[Cổng Bảo Mật] API Backend không khả dụng. Đang đăng nhập trực tiếp từ Google Sheet trên browser...");
+          data = await performClientSideLogin(username.trim(), password);
+        }
+      } catch (apiErr) {
+        console.log("[Cổng Bảo Mật] Kết nối API thất bại. Xác thực trực tiếp trên browser:", apiErr);
+        data = await performClientSideLogin(username.trim(), password);
+      }
+
+      if (!data || !data.success) {
+        throw new Error(data?.error || "Tài khoản hoặc mật khẩu không chính xác.");
       }
 
       // Automatically bypass security check with allowed appsheet link!
