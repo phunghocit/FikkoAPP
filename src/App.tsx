@@ -36,8 +36,8 @@ const cleanString = (str: string): string => {
 // Client-side fallback to read Google Sheets directly (useful for static deploys like Vercel)
 async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse> {
   const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg";
-  const sheetName = import.meta.env.VITE_SHEET_NAME || "Tài khoản";
-  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+  const ipSheetName = import.meta.env.VITE_IP_SHEET_NAME || "IP";
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
 
   try {
     const response = await fetch(gvizUrl);
@@ -61,32 +61,37 @@ async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse
       throw new Error("Không có hàng dữ liệu nào được cấu hình trong bảng tính.");
     }
 
-    const row0 = table.rows[0];
-    const cellI1_raw = row0.c?.[8]; // Col I matches index 8 (A=0, ..., I=8)
-    const cellJ1_raw = row0.c?.[9]; // Col J matches index 9 (J=9)
+    // Read all IPs from column A (starting from row 1)
+    const allowedIps: string[] = [];
+    for (let i = 0; i < table.rows.length; i++) {
+      const row = table.rows[i];
+      if (!row || !row.c || !row.c[0]) continue;
+      const ipVal = row.c[0].v ? String(row.c[0].v).trim() : '';
+      if (ipVal && ipVal !== '*' && ipVal !== 'IP') {  // Skip header or empty
+        allowedIps.push(ipVal);
+      }
+    }
 
-    const cellI1_val = cellI1_raw?.v ? String(cellI1_raw.v).trim() : '';
-    const cellJ1_val = cellJ1_raw?.v ? String(cellJ1_raw.v).trim() : '';
+    // Get AppSheet URL from B2 (row 1, column B which is index 1)
+    const appsheetUrlRaw = table.rows[1]?.c?.[1];  // B2 = row index 1, col index 1
+    const appsheetUrl = appsheetUrlRaw?.v ? String(appsheetUrlRaw.v).trim() : '';
 
-    const allowedIp = cellI1_val;
-    const appsheetUrl = cellJ1_val;
-
-    if (!allowedIp) {
-      throw new Error("Không lấy được dữ liệu địa chỉ IP an toàn ở ô I1 của Google Sheet.");
+    if (allowedIps.length === 0) {
+      throw new Error("Không lấy được danh sách địa chỉ IP an toàn ở cột A của sheet IP.");
     }
     if (!appsheetUrl) {
-      throw new Error("Không lấy được liên kết AppSheet bọc bảo mật ở ô J1 của Google Sheet.");
+      throw new Error("Không lấy được liên kết AppSheet ở ô B2 của sheet IP.");
     }
 
-    const allowedIps = allowedIp.split(/[\s,;\n\r]+/).map(ip => ip.trim()).filter(Boolean);
-    const isAllowed = allowedIps.includes(clientIp) || allowedIps.includes("*") || allowedIp === clientIp;
+    // Check if client IP is in allowed list or wildcard
+    const isAllowed = allowedIps.includes(clientIp) || allowedIps.includes("*");
 
     if (isAllowed) {
       return {
         success: true,
         allowed: true,
         clientIp,
-        allowedIpValue: allowedIp,
+        allowedIpValue: allowedIps.join(", "),
         appsheetUrl
       };
     } else {
@@ -94,7 +99,7 @@ async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse
         success: true,
         allowed: false,
         clientIp,
-        allowedIpValue: allowedIp,
+        allowedIpValue: allowedIps.join(", "),
         msg: "Bạn chỉ có thể truy cập khi làm việc tại nơi làm việc"
       };
     }
