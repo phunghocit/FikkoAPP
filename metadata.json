@@ -1,0 +1,6 @@
+{
+  "name": "AppSheet IP Wrapper",
+  "description": "Một ứng dụng bảo mật bọc ngoài AppSheet, xác minh địa chỉ IP của người truy cập với thông tin cấu hình trong Google Sheet để cấp quyền hiển thị.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
