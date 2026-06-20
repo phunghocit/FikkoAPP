@@ -77,30 +77,41 @@ async function startServer() {
         throw new Error("Không thể tìm thấy bất kỳ hàng dữ liệu nào trong trang tính IP.");
       }
 
-      // Read all IPs from column A (starting from row 0)
+      // Read all IPs from column A and projects from column B & C
       const allowedIps: string[] = [];
+      const projects: { name: string; url: string }[] = [];
       for (let i = 0; i < table.rows.length; i++) {
         const row = table.rows[i];
-        if (!row || !row.c || !row.c[0]) continue;
+        if (!row || !row.c) continue;
         
-        const ipVal = row.c[0].v ? String(row.c[0].v).trim() : '';
+        const ipVal = row.c[0] && row.c[0].v ? String(row.c[0].v).trim() : '';
         // Skip header or empty cells
         if (ipVal && ipVal !== 'IP' && ipVal !== '*') {
           allowedIps.push(ipVal);
         }
+
+        // Projects start from Row 1
+        if (i > 0) {
+          const urlVal = row.c[1] && row.c[1].v ? String(row.c[1].v).trim() : '';
+          if (urlVal) {
+            const nameVal = row.c[2] && row.c[2].v ? String(row.c[2].v).trim() : `Dự án ${projects.length + 1}`;
+            projects.push({ name: nameVal, url: urlVal });
+          }
+        }
       }
 
-      // Get AppSheet URL from B2 (row index 1, column index 1)
-      const appsheetUrlRaw = table.rows[1]?.c?.[1];
-      const appsheetUrl = appsheetUrlRaw?.v ? String(appsheetUrlRaw.v).trim() : '';
+      if (process.env.NODE_ENV !== 'production' && projects.length === 1) {
+        projects.push({ name: "Dự án Mock 2 (Local Demo)", url: "https://example.com" });
+      }
+      const appsheetUrl = projects[0]?.url || '';
 
-      console.log(`[Google Sheets Auth] Lấy từ sheet "${ipSheetName}": IPs=${allowedIps.join(', ')}, AppSheet="${appsheetUrl}"`);
+      console.log(`[Google Sheets Auth] Lấy từ sheet "${ipSheetName}": IPs=${allowedIps.join(', ')}, Projects=${JSON.stringify(projects)}`);
 
       if (allowedIps.length === 0) {
         throw new Error("Không tìm thấy giá trị địa chỉ IP được cấp phép trong cột A của sheet IP.");
       }
-      if (!appsheetUrl) {
-        throw new Error("Không tìm thấy liên kết AppSheet được cấp phép trong ô B2 của sheet IP.");
+      if (projects.length === 0) {
+        throw new Error("Không tìm thấy liên kết dự án nào được cấp phép trong cột B của sheet IP.");
       }
 
       // Check if client IP is allowed.
@@ -115,7 +126,8 @@ async function startServer() {
           allowed: true,
           clientIp,
           allowedIpValue: allowedIps.join(", "),
-          appsheetUrl: appsheetUrl
+          appsheetUrl: appsheetUrl,
+          projects: projects
         });
       } else {
         // IP does not match, block access and don't leak the appsheetUrl!
@@ -280,11 +292,12 @@ async function startServer() {
         });
       }
 
-      // Fetch AppSheet URL from IP sheet (B2), not from "Tài khoản" sheet
+      // Fetch Projects from IP sheet, not from "Tài khoản" sheet
       const ipSheetName = process.env.GOOGLE_IP_SHEET_NAME || 'IP';
       const ipSheetGvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
       
       let appsheetUrl = '';
+      const projects: { name: string; url: string }[] = [];
       try {
         const ipSheetResponse = await fetch(ipSheetGvizUrl);
         if (ipSheetResponse.ok) {
@@ -292,20 +305,34 @@ async function startServer() {
           const ipSheetMatch = ipSheetRawText.match(/google\.visualization\.Query\.setResponse\(([\s\S\w\W]*)\);/);
           if (ipSheetMatch) {
             const ipSheetJson = JSON.parse(ipSheetMatch[1]);
-            if (ipSheetJson.table && ipSheetJson.table.rows && ipSheetJson.table.rows.length > 1) {
-              const appsheetUrlRaw = ipSheetJson.table.rows[1]?.c?.[1]; // B2 = row 1, col 1
-              appsheetUrl = appsheetUrlRaw?.v ? String(appsheetUrlRaw.v).trim() : '';
+            if (ipSheetJson.table && ipSheetJson.table.rows) {
+              const rows = ipSheetJson.table.rows;
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || !row.c) continue;
+                const urlVal = row.c[1]?.v ? String(row.c[1].v).trim() : '';
+                if (urlVal) {
+                  const nameVal = row.c[2]?.v ? String(row.c[2].v).trim() : `Dự án ${projects.length + 1}`;
+                  projects.push({ name: nameVal, url: urlVal });
+                }
+              }
+              if (process.env.NODE_ENV !== 'production' && projects.length === 1) {
+                projects.push({ name: "Dự án Mock 2 (Local Demo)", url: "https://example.com" });
+              }
+              if (projects.length > 0) {
+                appsheetUrl = projects[0].url;
+              }
             }
           }
         }
       } catch (err) {
-        console.error("[/api/login] Lỗi lấy AppSheet từ IP sheet:", err);
+        console.error("[/api/login] Lỗi lấy các dự án từ IP sheet:", err);
       }
 
-      if (!appsheetUrl) {
+      if (projects.length === 0) {
         return res.status(400).json({
           success: false,
-          error: "Kho dữ liệu hiện tại không cấu hình liên kết AppSheet ở ô B2 của sheet IP."
+          error: "Kho dữ liệu hiện tại không cấu hình liên kết dự án nào trong cột B của sheet IP."
         });
       }
 
@@ -314,6 +341,7 @@ async function startServer() {
         allowed: true,
         userName: authenticatedUser.name,
         appsheetUrl: appsheetUrl,
+        projects: projects,
         msg: `Chào mừng Quản trị viên: ${authenticatedUser.name}!`
       });
 
