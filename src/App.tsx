@@ -540,6 +540,8 @@ export default function App() {
       if (pendingProjectUrl) {
         setActiveProjectUrl(pendingProjectUrl);
       }
+      setIsPanelVisible(true);
+      setIsDropdownOpen(true);
       setShowAuthModal(false);
       setPendingProjectUrl(null);
     } catch (err: any) {
@@ -638,7 +640,18 @@ export default function App() {
           <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
             {!isPanelVisible ? (
               <button
-                onClick={() => setIsPanelVisible(true)}
+                onClick={() => {
+                  if (isAdminAuthenticated) {
+                    setIsPanelVisible(true);
+                    setIsDropdownOpen(true);
+                  } else {
+                    setPendingProjectUrl(null);
+                    setModalUsername("");
+                    setModalPassword("");
+                    setModalError(null);
+                    setShowAuthModal(true);
+                  }
+                }}
                 className="bg-slate-900/85 hover:bg-slate-900 backdrop-blur-md text-slate-200 border border-white/10 rounded-full p-2.5 shadow-lg shadow-black/40 hover:shadow-black/60 transition-all cursor-pointer flex items-center justify-center active:scale-95 relative"
                 title="Mở bộ chọn dự án"
               >
@@ -694,17 +707,8 @@ export default function App() {
                                 key={idx}
                                 onClick={() => {
                                   if (isActive) return;
-                                  if (isAdminAuthenticated) {
-                                    setActiveProjectUrl(project.url);
-                                    setIsDropdownOpen(false);
-                                  } else {
-                                    setPendingProjectUrl(project.url);
-                                    setModalUsername("");
-                                    setModalPassword("");
-                                    setModalError(null);
-                                    setShowAuthModal(true);
-                                    setIsDropdownOpen(false);
-                                  }
+                                  setActiveProjectUrl(project.url);
+                                  setIsDropdownOpen(false);
                                 }}
                                 className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center justify-between group cursor-pointer text-xs ${
                                   isActive
