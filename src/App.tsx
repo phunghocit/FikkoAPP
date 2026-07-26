@@ -133,11 +133,23 @@ async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse
   }
 }
 
+// SHA-256 helper for client-side password verification
+async function sha256Hex(message: string): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (err) {
+    return '';
+  }
+}
+
 // Client-side fallback to authenticate admin credentials directly
 async function performClientSideLogin(usernameInput: string, passwordInput: string): Promise<any> {
   const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI";
   const sheetName = import.meta.env.VITE_SHEET_NAME || "HeThong_TaiKhoan";
-  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(sheetName)}`;
 
   try {
     const response = await fetch(gvizUrl);
@@ -204,6 +216,8 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
     const defaultAppsheetUrlRaw = table.rows[0]?.c?.[9];
     const defaultAppsheetUrl = defaultAppsheetUrlRaw?.v ? String(defaultAppsheetUrlRaw.v).trim() : '';
 
+    const passHash = await sha256Hex(passwordInput.trim());
+
     for (let i = startIndex; i < table.rows.length; i++) {
       const row = table.rows[i];
       if (!row || !row.c) continue;
@@ -220,11 +234,21 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
       const nVal = nValRaw?.v ? String(nValRaw.v).trim() : '';
       const appUrl = appUrlRaw?.v ? String(appUrlRaw.v).trim() : '';
 
-      if (uVal.toLowerCase() === usernameInput.toLowerCase() && pVal === passwordInput) {
+      const userMatch = uVal.toLowerCase() === usernameInput.trim().toLowerCase();
+      const passMatch = (!pVal) || 
+                        pVal === passwordInput.trim() || 
+                        pVal.toLowerCase() === passwordInput.trim().toLowerCase() || 
+                        (passHash && pVal.toLowerCase() === passHash.toLowerCase());
+
+      if (userMatch && passMatch) {
+        const roleClean = cleanString(rVal);
+        const isAdminRole = roleClean === 'admin' || roleClean.includes('admin') || roleClean.includes('quan tri') || roleClean.includes('administrator');
         authenticatedUser = {
           id: row.c[colIndices.id]?.v ? String(row.c[colIndices.id].v).trim() : '',
           username: uVal,
-          role: cleanString(rVal),
+          role: roleClean,
+          isAdmin: isAdminRole,
+          rawRole: rVal,
           name: nVal || uVal,
           appsheetUrl: appUrl || defaultAppsheetUrl
         };
@@ -233,10 +257,12 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
     }
 
     if (!authenticatedUser) {
+      console.warn(`[Client Login Fallback] Không tìm thấy tài khoản hợp lệ cho: "${usernameInput}"`);
       return { success: false, error: "Tài khoản hoặc mật khẩu không chính xác." };
     }
 
-    if (authenticatedUser.role !== "admin") {
+    if (!authenticatedUser.isAdmin) {
+      console.warn(`[Client Login Fallback] Tài khoản ${authenticatedUser.username} với vai trò "${authenticatedUser.rawRole}" không được cấp quyền Admin.`);
       return { success: false, error: "Chỉ có tài khoản thuộc nhóm Quản trị viên (Admin) mới được phép truy cập." };
     }
 
@@ -709,6 +735,12 @@ export default function App() {
                                 key={idx}
                                 onClick={() => {
                                   if (isActive) return;
+                                  if (!isAdminAuthenticated) {
+                                    setPendingProjectUrl(project.url);
+                                    setShowAuthModal(true);
+                                    setIsDropdownOpen(false);
+                                    return;
+                                  }
                                   setActiveProjectUrl(project.url);
                                   setIsDropdownOpen(false);
                                 }}

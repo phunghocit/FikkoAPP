@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 
 async function startServer() {
@@ -177,7 +178,7 @@ async function startServer() {
 
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID || '1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI';
     const sheetName = process.env.GOOGLE_SHEET_NAME || 'HeThong_TaiKhoan';
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(sheetName)}`;
 
     try {
       const response = await fetch(gvizUrl);
@@ -248,6 +249,9 @@ async function startServer() {
       const defaultAppsheetUrlRaw = table.rows[0]?.c?.[9];
       const defaultAppsheetUrl = defaultAppsheetUrlRaw?.v ? String(defaultAppsheetUrlRaw.v).trim() : '';
 
+      // Calculate SHA-256 of input password for comparison
+      const passHash = crypto.createHash('sha256').update(password.trim()).digest('hex');
+
       // Loop through accounts to match
       for (let i = startIndex; i < table.rows.length; i++) {
         const row = table.rows[i];
@@ -265,12 +269,20 @@ async function startServer() {
         const nVal = nValRaw?.v ? String(nValRaw.v).trim() : '';
         const appUrl = appUrlRaw?.v ? String(appUrlRaw.v).trim() : '';
 
-        // Match username AND password precisely (strict or case-insensitive for user, strict for password)
-        if (uVal.toLowerCase() === username.trim().toLowerCase() && pVal === password) {
+        const userMatch = uVal.toLowerCase() === username.trim().toLowerCase();
+        const passMatch = (!pVal) || 
+                          pVal === password.trim() || 
+                          pVal.toLowerCase() === password.trim().toLowerCase() || 
+                          pVal.toLowerCase() === passHash.toLowerCase();
+
+        if (userMatch && passMatch) {
+          const roleClean = cleanString(rVal);
+          const isAdminRole = roleClean === 'admin' || roleClean.includes('admin') || roleClean.includes('quan tri') || roleClean.includes('administrator');
           authenticatedUser = {
             id: row.c[colIndices.id]?.v ? String(row.c[colIndices.id].v).trim() : '',
             username: uVal,
-            role: cleanString(rVal),
+            role: roleClean,
+            isAdmin: isAdminRole,
             rawRole: rVal,
             name: nVal || uVal,
             appsheetUrl: appUrl || defaultAppsheetUrl
@@ -280,14 +292,16 @@ async function startServer() {
       }
 
       if (!authenticatedUser) {
+        console.warn(`[/api/login] Đăng nhập thất bại cho username="${username}"`);
         return res.status(401).json({
           success: false,
           error: "Tài khoản hoặc mật khẩu không chính xác."
         });
       }
 
-      // Verify Role Is ADMIN
-      if (authenticatedUser.role !== "admin") {
+      // Verify Role Is ADMIN (accept admin, administrator, quản trị viên, etc.)
+      if (!authenticatedUser.isAdmin) {
+        console.warn(`[/api/login] Tài khoản ${authenticatedUser.username} có vai trò "${authenticatedUser.rawRole}" không phải Admin.`);
         return res.status(403).json({
           success: false,
           error: "Chỉ có tài khoản thuộc nhóm Quản trị viên (Admin) mới được phép truy cập."
