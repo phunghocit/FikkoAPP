@@ -14,7 +14,7 @@ async function startServer() {
     // 1. Get client IP (prefer client-side public WAN IP passed in query)
     const queryIp = req.query.client_ip;
     let clientIp = '';
-    
+
     if (queryIp && typeof queryIp === 'string') {
       clientIp = queryIp.trim();
     } else {
@@ -29,7 +29,7 @@ async function startServer() {
         clientIp = req.socket.remoteAddress || '';
       }
     }
-    
+
     // Extract only standard IPv4 address from the string
     const ipv4Match = clientIp.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
     if (ipv4Match) {
@@ -43,9 +43,9 @@ async function startServer() {
       }
     }
 
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID || '1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg';
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID || '1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI';
     const ipSheetName = process.env.GOOGLE_IP_SHEET_NAME || 'IP';
-    
+
     // Use the spreadsheet gviz query endpoint which is incredibly direct, doesn't require credentials
     // if the spreadsheet is shared with "Anyone with the link can view".
     const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
@@ -56,7 +56,7 @@ async function startServer() {
         throw new Error(`Google Sheets trả về mã lỗi ${response.status}`);
       }
       const rawText = await response.text();
-      
+
       // Match the JSON string from the google visualization API response
       const match = rawText.match(/google\.visualization\.Query\.setResponse\(([\s\S\w\W]*)\);/);
       if (!match) {
@@ -83,7 +83,7 @@ async function startServer() {
       for (let i = 0; i < table.rows.length; i++) {
         const row = table.rows[i];
         if (!row || !row.c) continue;
-        
+
         const ipVal = row.c[0] && row.c[0].v ? String(row.c[0].v).trim() : '';
         // Skip header or empty cells
         if (ipVal && ipVal !== 'IP' && ipVal !== '*') {
@@ -103,7 +103,8 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production' && projects.length === 1) {
         projects.push({ name: "Dự án Mock 2 (Local Demo)", url: "https://example.com" });
       }
-      const appsheetUrl = projects[0]?.url || '';
+      const defaultProj = projects.find(p => p.name.toLowerCase().includes('fikko-app') || p.name.toLowerCase().includes('fikko app') || p.url.includes('AKfycbww')) || projects[0];
+      const appsheetUrl = defaultProj?.url || '';
 
       console.log(`[Google Sheets Auth] Lấy từ sheet "${ipSheetName}": IPs=${allowedIps.join(', ')}, Projects=${JSON.stringify(projects)}`);
 
@@ -174,8 +175,8 @@ async function startServer() {
       });
     }
 
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID || '1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg';
-    const sheetName = process.env.GOOGLE_SHEET_NAME || 'Tài khoản';
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID || '1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI';
+    const sheetName = process.env.GOOGLE_SHEET_NAME || 'HeThong_TaiKhoan';
     const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
 
     try {
@@ -200,14 +201,15 @@ async function startServer() {
         throw new Error("Không có dữ liệu trong trang tính 'Tài khoản'.");
       }
 
-      // Default column mapping according to standard layout: ID, Tài khoản, Mật khẩu, Role, Tên
+      // Default column mapping according to HeThong_TaiKhoan sheet layout:
+      // A: Tên đăng nhập, B: Mật khẩu, C: Họ tên, D: Vai trò
       const colIndices = {
         id: 0,        // A
-        username: 1,  // B
-        password: 2,  // C
-        role: 3,      // D
-        name: 4,      // E
-        appsheet: 9   // J (cấu hình mặc định của AppSheet URL)
+        username: 0,  // A (Tên đăng nhập)
+        password: 1,  // B (Mật khẩu)
+        name: 2,      // C (Họ tên)
+        role: 3,      // D (Vai trò)
+        appsheet: 9   // J
       };
 
       // Detect sheet headers based on values in the first row (Row 0)
@@ -220,7 +222,7 @@ async function startServer() {
           if (val === 'id') {
             colIndices.id = idx;
             hasHeader = true;
-          } else if (val === 'tai khoa' || val.includes('tai khoan') || val === 'username' || val === 'user') {
+          } else if (val.includes('ten dang nhap') || val.includes('dang nhap') || val.includes('tai khoan') || val === 'username' || val === 'user') {
             colIndices.username = idx;
             hasHeader = true;
           } else if (val.includes('mat khau') || val === 'password' || val === 'pass') {
@@ -295,7 +297,7 @@ async function startServer() {
       // Fetch Projects from IP sheet, not from "Tài khoản" sheet
       const ipSheetName = process.env.GOOGLE_IP_SHEET_NAME || 'IP';
       const ipSheetGvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
-      
+
       let appsheetUrl = '';
       const projects: { name: string; url: string }[] = [];
       try {

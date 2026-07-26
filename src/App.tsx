@@ -1,13 +1,13 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Lock, 
-  Unlock, 
-  Copy, 
-  Check, 
-  AlertTriangle, 
-  RefreshCw, 
-  ShieldCheck, 
+import {
+  Lock,
+  Unlock,
+  Copy,
+  Check,
+  AlertTriangle,
+  RefreshCw,
+  ShieldCheck,
   ShieldAlert,
   ChevronDown,
   ChevronRight,
@@ -41,7 +41,7 @@ const cleanString = (str: string): string => {
 
 // Client-side fallback to read Google Sheets directly (useful for static deploys like Vercel)
 async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse> {
-  const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg";
+  const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI";
   const ipSheetName = import.meta.env.VITE_IP_SHEET_NAME || "IP";
   const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetName)}`;
 
@@ -73,7 +73,7 @@ async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse
     for (let i = 0; i < table.rows.length; i++) {
       const row = table.rows[i];
       if (!row || !row.c) continue;
-      
+
       const ipVal = row.c[0]?.v ? String(row.c[0].v).trim() : '';
       if (ipVal && ipVal !== '*' && ipVal !== 'IP') {  // Skip header or empty
         allowedIps.push(ipVal);
@@ -91,7 +91,8 @@ async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse
     if (import.meta.env.DEV && projects.length === 1) {
       projects.push({ name: "Dự án Mock 2 (Local Demo)", url: "https://example.com" });
     }
-    const appsheetUrl = projects[0]?.url || '';
+    const defaultProj = projects.find(p => p.name.toLowerCase().includes('fikko-app') || p.name.toLowerCase().includes('fikko app') || p.url.includes('AKfycbww')) || projects[0];
+    const appsheetUrl = defaultProj?.url || '';
 
     if (allowedIps.length === 0) {
       throw new Error("Không lấy được danh sách địa chỉ IP an toàn ở cột A của sheet IP.");
@@ -134,8 +135,8 @@ async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse
 
 // Client-side fallback to authenticate admin credentials directly
 async function performClientSideLogin(usernameInput: string, passwordInput: string): Promise<any> {
-  const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1Emlyaz95ivfuR0N05q9eouUjZF4FPUKYyJADqZq9bMg";
-  const sheetName = import.meta.env.VITE_SHEET_NAME || "Tài khoản";
+  const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI";
+  const sheetName = import.meta.env.VITE_SHEET_NAME || "HeThong_TaiKhoan";
   const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
 
   try {
@@ -160,13 +161,13 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
       throw new Error("Không có bất kỳ tài khoản nào được đăng ký trong bảng tính.");
     }
 
-    // Default columns
+    // Default columns matching HeThong_TaiKhoan layout (A: Tên đăng nhập, B: Mật khẩu, C: Họ tên, D: Vai trò)
     const colIndices = {
       id: 0,
-      username: 1,
-      password: 2,
+      username: 0,
+      password: 1,
+      name: 2,
       role: 3,
-      name: 4,
       appsheet: 9
     };
 
@@ -179,7 +180,7 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
         if (val === 'id') {
           colIndices.id = idx;
           hasHeader = true;
-        } else if (val === 'tai khoa' || val.includes('tai khoan') || val === 'username' || val === 'user') {
+        } else if (val.includes('ten dang nhap') || val.includes('dang nhap') || val.includes('tai khoan') || val === 'username' || val === 'user') {
           colIndices.username = idx;
           hasHeader = true;
         } else if (val.includes('mat khau') || val === 'password' || val === 'pass') {
@@ -242,7 +243,7 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
     // Fetch Projects from IP sheet, not from "Tài khoản" sheet
     const ipSheetNameVar = import.meta.env.VITE_IP_SHEET_NAME || "IP";
     const ipSheetGvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(ipSheetNameVar)}`;
-    
+
     let appsheetUrl = '';
     const projects: { name: string; url: string }[] = [];
     try {
@@ -267,7 +268,8 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
               projects.push({ name: "Dự án Mock 2 (Local Demo)", url: "https://example.com" });
             }
             if (projects.length > 0) {
-              appsheetUrl = projects[0].url;
+              const defaultProj = projects.find(p => p.name.toLowerCase().includes('fikko-app') || p.name.toLowerCase().includes('fikko app') || p.url.includes('AKfycbww')) || projects[0];
+              appsheetUrl = defaultProj.url;
             }
           }
         }
@@ -353,12 +355,12 @@ export default function App() {
 
       // Step 2: Query security gateway with client_ip if detected
       const apiUrl = publicIp ? `/api/check-ip?client_ip=${encodeURIComponent(publicIp)}` : "/api/check-ip";
-      
+
       let data: IPCheckResponse;
       try {
         const res = await fetch(apiUrl);
         const contentType = res.headers.get("content-type");
-        
+
         if (res.ok && contentType && contentType.includes("application/json")) {
           try {
             data = await res.json();
@@ -386,7 +388,7 @@ export default function App() {
           setActiveProjectUrl(data.appsheetUrl);
         }
       }
-      
+
       if (!data.success && data.error) {
         setErrorText(data.error);
       }
@@ -433,7 +435,7 @@ export default function App() {
         }
 
         const apiUrl = currentIp ? `/api/check-ip?client_ip=${encodeURIComponent(currentIp)}` : "/api/check-ip";
-        
+
         let data: IPCheckResponse;
         try {
           const res = await fetch(apiUrl);
@@ -516,7 +518,7 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: modalUsername.trim(), password: modalPassword })
         });
-        
+
         const contentType = response.headers.get("content-type");
         if (response.ok && contentType && contentType.includes("application/json")) {
           try {
@@ -569,7 +571,7 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: username.trim(), password })
         });
-        
+
         const contentType = response.headers.get("content-type");
         if (response.ok && contentType && contentType.includes("application/json")) {
           try {
@@ -710,11 +712,10 @@ export default function App() {
                                   setActiveProjectUrl(project.url);
                                   setIsDropdownOpen(false);
                                 }}
-                                className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center justify-between group cursor-pointer text-xs ${
-                                  isActive
-                                    ? 'bg-indigo-600 text-white font-semibold'
-                                    : 'hover:bg-white/5 text-slate-300'
-                                }`}
+                                className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center justify-between group cursor-pointer text-xs ${isActive
+                                  ? 'bg-indigo-600 text-white font-semibold'
+                                  : 'hover:bg-white/5 text-slate-300'
+                                  }`}
                               >
                                 <span className="truncate pr-2 font-medium">{project.name}</span>
                                 <span className="flex items-center space-x-1">
@@ -877,8 +878,8 @@ export default function App() {
           >
             <div className="relative text-center flex flex-col items-center max-w-md w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[32px] p-8 md:p-10 shadow-2xl shadow-indigo-950/20" id="loading-card">
               <div className="relative w-20 h-20 mb-6 flex items-center justify-center">
-                <motion.div 
-                   className="absolute inset-0 rounded-full border border-indigo-500/25 animate-ping"
+                <motion.div
+                  className="absolute inset-0 rounded-full border border-indigo-500/25 animate-ping"
                 />
                 <div className="w-12 h-12 rounded-full bg-slate-900/80 border border-indigo-500/30 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.2)]">
                   <Lock className="w-5 h-5 text-indigo-400 animate-pulse" />
@@ -906,7 +907,7 @@ export default function App() {
             id="denied-container"
           >
             <div className="max-w-md w-full bg-slate-950/40 backdrop-blur-2xl border border-white/10 rounded-[32px] p-6 md:p-8 shadow-2xl shadow-black/40 text-center" id="denied-card">
-              
+
               {/* Header Icon & Branding */}
               <div className="flex flex-col items-center pb-5 mb-5 border-b border-white/10" id="denied-header">
                 <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-5 shadow-[0_0_20px_rgba(239,68,68,0.15)]">
@@ -915,7 +916,7 @@ export default function App() {
                 <div className="px-3 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-full text-[10px] font-bold uppercase tracking-widest inline-block mb-3.5">
                   TRUY CẬP BỊ TỪ CHỐI
                 </div>
-                
+
                 {/* Clean user failure message */}
                 <h1 className="text-lg md:text-xl font-extrabold tracking-normal text-white px-2 leading-relaxed font-sans" id="denied-main-msg">
                   Bạn chỉ có thể truy cập khi làm việc tại nơi làm việc
