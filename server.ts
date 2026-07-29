@@ -165,6 +165,17 @@ async function startServer() {
       .replace(/\s+/g, ' ');
   };
 
+  const isBypassAllowedRole = (role: string): boolean => {
+    const roleClean = cleanString(role);
+    return roleClean === 'admin' ||
+      roleClean.includes('admin') ||
+      roleClean.includes('quan tri') ||
+      roleClean.includes('administrator') ||
+      roleClean === 'manager' ||
+      roleClean.includes('manager') ||
+      roleClean.includes('quan ly');
+  };
+
   // API Route to handle credentials login for Admin Bypass
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
@@ -277,7 +288,7 @@ async function startServer() {
 
         if (userMatch && passMatch) {
           const roleClean = cleanString(rVal);
-          const isAdminRole = roleClean === 'admin' || roleClean.includes('admin') || roleClean.includes('quan tri') || roleClean.includes('administrator');
+          const isAdminRole = isBypassAllowedRole(rVal);
           authenticatedUser = {
             id: row.c[colIndices.id]?.v ? String(row.c[colIndices.id].v).trim() : '',
             username: uVal,
@@ -299,12 +310,12 @@ async function startServer() {
         });
       }
 
-      // Verify Role Is ADMIN (accept admin, administrator, quản trị viên, etc.)
+      // Verify Role Is ADMIN or MANAGER (accept admin, administrator, quản trị viên, manager, quản lý, etc.)
       if (!authenticatedUser.isAdmin) {
-        console.warn(`[/api/login] Tài khoản ${authenticatedUser.username} có vai trò "${authenticatedUser.rawRole}" không phải Admin.`);
+        console.warn(`[/api/login] Tài khoản ${authenticatedUser.username} có vai trò "${authenticatedUser.rawRole}" không được phép bypass IP.`);
         return res.status(403).json({
           success: false,
-          error: "Chỉ có tài khoản thuộc nhóm Quản trị viên (Admin) mới được phép truy cập."
+          error: "Chỉ có tài khoản thuộc nhóm Quản trị viên hoặc Quản lý mới được phép truy cập."
         });
       }
 
@@ -358,7 +369,7 @@ async function startServer() {
         userName: authenticatedUser.name,
         appsheetUrl: appsheetUrl,
         projects: projects,
-        msg: `Chào mừng Quản trị viên: ${authenticatedUser.name}!`
+        msg: `Chào mừng ${authenticatedUser.rawRole || 'Quản trị viên/Quản lý'}: ${authenticatedUser.name}!`
       });
 
     } catch (err: any) {

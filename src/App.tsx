@@ -34,6 +34,17 @@ const cleanString = (str: string): string => {
     .replace(/\s+/g, ' ');
 };
 
+const isBypassAllowedRole = (role: string): boolean => {
+  const roleClean = cleanString(role);
+  return roleClean === 'admin' ||
+    roleClean.includes('admin') ||
+    roleClean.includes('quan tri') ||
+    roleClean.includes('administrator') ||
+    roleClean === 'manager' ||
+    roleClean.includes('manager') ||
+    roleClean.includes('quan ly');
+};
+
 // Client-side fallback to read Google Sheets directly (useful for static deploys like Vercel)
 async function performClientSideCheck(clientIp: string): Promise<IPCheckResponse> {
   const spreadsheetId = import.meta.env.VITE_SPREADSHEET_ID || "1LI8edTRUQZNqyVxUtD0fj_ZaarcalHoEvrdfa3D7PdI";
@@ -237,7 +248,7 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
 
       if (userMatch && passMatch) {
         const roleClean = cleanString(rVal);
-        const isAdminRole = roleClean === 'admin' || roleClean.includes('admin') || roleClean.includes('quan tri') || roleClean.includes('administrator');
+        const isAdminRole = isBypassAllowedRole(rVal);
         authenticatedUser = {
           id: row.c[colIndices.id]?.v ? String(row.c[colIndices.id].v).trim() : '',
           username: uVal,
@@ -257,8 +268,8 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
     }
 
     if (!authenticatedUser.isAdmin) {
-      console.warn(`[Client Login Fallback] Tài khoản ${authenticatedUser.username} với vai trò "${authenticatedUser.rawRole}" không được cấp quyền Admin.`);
-      return { success: false, error: "Chỉ có tài khoản thuộc nhóm Quản trị viên (Admin) mới được phép truy cập." };
+      console.warn(`[Client Login Fallback] Tài khoản ${authenticatedUser.username} với vai trò "${authenticatedUser.rawRole}" không được cấp quyền bypass.`);
+      return { success: false, error: "Chỉ có tài khoản thuộc nhóm Quản trị viên hoặc Quản lý mới được phép truy cập." };
     }
 
     // Fetch Projects from IP sheet, not from "Tài khoản" sheet
@@ -308,7 +319,7 @@ async function performClientSideLogin(usernameInput: string, passwordInput: stri
       allowed: true,
       appsheetUrl: appsheetUrl,
       projects: projects,
-      msg: `Chào mừng Quản trị viên: ${authenticatedUser.name}!`
+      msg: `Chào mừng ${authenticatedUser.rawRole || 'Quản trị viên/Quản lý'}: ${authenticatedUser.name}!`
     };
   } catch (err: any) {
     console.error("[Fallback Login Check] Thất bại:", err);
@@ -674,14 +685,14 @@ export default function App() {
               <div className="border border-white/10 bg-slate-900/50 rounded-2xl p-4 mb-5 text-left" id="admin-login-bypass">
                 <div className="flex items-center space-x-2 mb-3">
                   <Unlock className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-bold text-slate-300 tracking-wide uppercase">Cổng xác thực Quản trị viên</span>
+                  <span className="text-xs font-bold text-slate-300 tracking-wide uppercase">Cổng xác thực Quản trị viên / Quản lý</span>
                 </div>
 
                 <form onSubmit={handleLoginSubmit} className="space-y-3">
                   <div>
                     <input
                       type="text"
-                      placeholder="Tài khoản Admin"
+                      placeholder="Tài khoản Admin/Manager"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
