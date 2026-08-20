@@ -1,26 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AlertCircle, Sparkles, Layers } from 'lucide-react';
 
 export default function App() {
-  // Read Apps Script URL from environment variable or query parameter (?url=...)
+  // Helper to resolve URL from build-time env or query param
   const getInitialUrl = (): string => {
     const params = new URLSearchParams(window.location.search);
     const queryUrl = params.get('url');
     if (queryUrl) return queryUrl;
 
-    return import.meta.env.VITE_APPSCRIPT_URL || '';
+    return (
+      import.meta.env.VITE_APPSCRIPT_URL ||
+      (import.meta.env as any).APPSCRIPT_URL ||
+      (import.meta.env as any).SCRIPT_URL ||
+      ''
+    );
   };
 
   const [url, setUrl] = useState<string>(getInitialUrl());
   const [inputUrl, setInputUrl] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
-
-  // Sync state if URL changes
-  useEffect(() => {
-    if (url) {
-      setLoading(true);
-    }
-  }, [url]);
 
   const handleCustomUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +55,7 @@ export default function App() {
               <div>
                 <p className="font-semibold mb-0.5">Chưa có liên kết Apps Script</p>
                 <p className="text-amber-300/80">
-                  Vui lòng thêm biến <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-200 font-mono text-[11px]">VITE_APPSCRIPT_URL</code> vào file <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-200 font-mono text-[11px]">.env</code> hoặc nhập URL trực tiếp bên dưới.
+                  Vui lòng thêm biến <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-200 font-mono text-[11px]">VITE_APPSCRIPT_URL</code> vào file <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-200 font-mono text-[11px]">.env</code> hoặc phần Environment Variables trên Git/Platform.
                 </p>
               </div>
             </div>
@@ -94,24 +91,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950">
-      {/* Loading Overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-30 bg-slate-950 flex flex-col items-center justify-center gap-4 transition-opacity duration-300">
-          <div className="relative flex items-center justify-center">
-            <div className="w-14 h-14 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-            <Layers className="absolute w-5 h-5 text-indigo-400" />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-medium text-slate-200 animate-pulse">
-              Đang tải ứng dụng Apps Script...
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Vui lòng chờ trong giây lát</p>
-          </div>
-        </div>
-      )}
-
-      {/* Main Apps Script Iframe */}
+    <div className="w-screen h-screen overflow-hidden bg-slate-950">
       <iframe
         src={url}
         title="Google Apps Script Application"
@@ -119,7 +99,6 @@ export default function App() {
         allow="geolocation; microphone; camera; midi; encrypted-media; clipboard-write; display-capture;"
         sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-top-navigation allow-downloads"
         referrerPolicy="no-referrer"
-        onLoad={() => setLoading(false)}
       />
     </div>
   );

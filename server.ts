@@ -13,6 +13,16 @@ async function startServer() {
     res.json({ status: "ok", app: "Apps Script Iframe Wrapper" });
   });
 
+  // Config endpoint to return runtime environment variables
+  app.get("/api/config", (_req, res) => {
+    const url =
+      process.env.VITE_APPSCRIPT_URL ||
+      process.env.APPSCRIPT_URL ||
+      process.env.SCRIPT_URL ||
+      "";
+    res.json({ appScriptUrl: url });
+  });
+
   const isProd = process.env.NODE_ENV === "production";
 
   if (!isProd) {
