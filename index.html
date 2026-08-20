@@ -1,34 +1,16 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fikko APP</title>
-    <link rel="icon" type="image/png" href="/assets/logo/fikkomarket.PNG" />
-      <script>
-      (function() {
-        try {
-          var originalFetch = window.fetch;
-          var currentFetch = originalFetch;
-          Object.defineProperty(window, 'fetch', {
-            get: function() {
-              return currentFetch;
-            },
-            set: function(val) {
-              currentFetch = val;
-            },
-            configurable: true,
-            enumerable: true
-          });
-        } catch (e) {
-          console.warn("Không thể thiết lập cấu hình getter/setter cho window.fetch:", e);
-        }
-      })();
-    </script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<html lang="vi">
 
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Fikko APP</title>
+  <link rel="icon" type="image/png" href="/assets/logo/fikkomarket.PNG" />
+</head>
+
+<body class="bg-slate-950 text-slate-100 overflow-hidden">
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

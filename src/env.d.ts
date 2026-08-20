@@ -1,7 +1,5 @@
 declare interface ImportMetaEnv {
-  readonly VITE_SPREADSHEET_ID?: string;
-  readonly VITE_SHEET_NAME?: string;
-  readonly VITE_IP_SHEET_NAME?: string;
+  readonly VITE_APPSCRIPT_URL?: string;
   readonly DEV?: boolean;
 }
 
